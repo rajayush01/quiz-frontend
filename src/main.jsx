@@ -124,166 +124,6 @@ function Confetti({ active }) {
   return <canvas ref={canvasRef} style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:9999 }} />;
 }
 
-function ParticleBurst({ active, onDone }) {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    if (!active) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const colors = ["#ff9f7f","#ffc4a0","#ffb347","#f4a261","#ffd700","#ff6b6b","#b5ead7","#c3b1e1"];
-    const particles = Array.from({ length: 120 }, () => {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 18 + 6;
-      return {
-        x: cx, y: cy,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        r: Math.random() * 10 + 4,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        alpha: 1,
-        shape: Math.random() > 0.5 ? "circle" : "star",
-      };
-    });
-    // Big emoji burst text
-    const emojis = ["✨","⭐","💥","🎉","🌟"];
-    let frame;
-    let tick = 0;
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.45; // gravity
-        p.vx *= 0.97;
-        p.alpha -= 0.022;
-        if (p.alpha <= 0) return;
-        ctx.globalAlpha = p.alpha;
-        ctx.fillStyle = p.color;
-        if (p.shape === "circle") {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.save();
-          ctx.translate(p.x, p.y);
-          ctx.rotate(tick * 0.05);
-          ctx.beginPath();
-          for (let i = 0; i < 5; i++) {
-            const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-            const ia = a + (2 * Math.PI) / 10;
-            ctx.lineTo(Math.cos(a) * p.r, Math.sin(a) * p.r);
-            ctx.lineTo(Math.cos(ia) * (p.r * 0.4), Math.sin(ia) * (p.r * 0.4));
-          }
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-        ctx.globalAlpha = 1;
-      });
-      // Center flash ring
-      if (tick < 12) {
-        const ringR = tick * 22;
-        ctx.globalAlpha = Math.max(0, 0.6 - tick * 0.05);
-        ctx.strokeStyle = "#ffb347";
-        ctx.lineWidth = 6;
-        ctx.beginPath();
-        ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-      tick++;
-      frame = requestAnimationFrame(draw);
-    }
-    draw();
-    const t = setTimeout(() => { cancelAnimationFrame(frame); onDone?.(); }, 1800);
-    return () => { cancelAnimationFrame(frame); clearTimeout(t); };
-  }, [active]);
-  if (!active) return null;
-  return <canvas ref={canvasRef} style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:9998 }} />;
-}
-
-function FireworksBurst({ active }) {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    if (!active) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const colors = ["#ff9f7f","#ffc4a0","#ffb347","#f4a261","#ffd700","#ff6b6b","#b5ead7","#c3b1e1","#52b788","#74b3ce"];
-    let rockets = [];
-    let frame;
-    function makeRocket() {
-      const x = Math.random() * canvas.width;
-      const y = canvas.height + 20;
-      const targetY = Math.random() * canvas.height * 0.55 + 60;
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      rockets.push({ x, y, targetY, vy: -(Math.abs(targetY - y) / 28), exploded: false, particles: [], color, trail: [] });
-    }
-    // Stagger rockets
-    const timers = [0,400,700,1100,1400,1800,2100,2500].map(d => setTimeout(makeRocket, d));
-    function explode(r) {
-      r.exploded = true;
-      for (let i = 0; i < 90; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 10 + 2;
-        r.particles.push({
-          x: r.x, y: r.y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          r: Math.random() * 5 + 2,
-          color: r.color,
-          alpha: 1,
-        });
-      }
-    }
-    function draw() {
-      ctx.fillStyle = "rgba(254,246,236,0.13)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      rockets.forEach(r => {
-        if (!r.exploded) {
-          r.y += r.vy;
-          r.trail.push({ x: r.x, y: r.y });
-          if (r.trail.length > 14) r.trail.shift();
-          r.trail.forEach((t, i) => {
-            ctx.globalAlpha = (i / r.trail.length) * 0.5;
-            ctx.fillStyle = r.color;
-            ctx.beginPath();
-            ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
-            ctx.fill();
-          });
-          ctx.globalAlpha = 1;
-          if (r.y <= r.targetY) explode(r);
-        } else {
-          r.particles.forEach(p => {
-            p.x += p.vx; p.y += p.vy;
-            p.vy += 0.18;
-            p.vx *= 0.97;
-            p.alpha -= 0.018;
-            if (p.alpha <= 0) return;
-            ctx.globalAlpha = p.alpha;
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fill();
-          });
-          ctx.globalAlpha = 1;
-        }
-      });
-      frame = requestAnimationFrame(draw);
-    }
-    draw();
-    const stopT = setTimeout(() => cancelAnimationFrame(frame), 5000);
-    return () => { cancelAnimationFrame(frame); clearTimeout(stopT); timers.forEach(clearTimeout); };
-  }, [active]);
-  if (!active) return null;
-  return <canvas ref={canvasRef} style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:9997 }} />;
-}
-
 function FloatingStickers() {
   return (
     <div className="stickers-bg" aria-hidden="true">
@@ -420,9 +260,6 @@ function CandidateExperience() {
   const [user,     setUser]     = useState(null);
   const [attemptId,setAttemptId]= useState(null);
   const [sessionInfo, setSessionInfo] = useState(null); // { quizTitle, totalQuestions }
-  const [particleBurst, setParticleBurst] = useState(false);
-  const [answeredCount, setAnsweredCount] = useState(0);
-  const [liveTotal,     setLiveTotal]     = useState(0);
 
   // Live question state
   const [currentQuestion, setCurrentQuestion] = useState(null);
@@ -509,14 +346,6 @@ function CandidateExperience() {
       setStage("finished");
     });
 
-    es.addEventListener("live_leaderboard", (e) => {
-      const d = JSON.parse(e.data);
-      // Update leaderboard in real time while question is in progress
-      setLeaderboard(d.leaderboard || []);
-      setAnsweredCount(d.answeredCount || 0);
-      setLiveTotal(d.total || 0);
-    });
-
     es.onerror = () => {
       // will auto-reconnect
     };
@@ -589,10 +418,7 @@ function CandidateExperience() {
       });
       const isCorrect = result.isCorrect;
       setMyScore(result.totalScore);
-      if (isCorrect){
-        setStreak(s => s + 1);
-        setParticleBurst(true);
-      }  
+      if (isCorrect) setStreak(s => s + 1);
       else           setStreak(0);
 
       const gif = isCorrect ? randomFrom(CORRECT_GIFS) : randomFrom(WRONG_GIFS);
@@ -619,7 +445,6 @@ function CandidateExperience() {
   return (
     <div className="candidate-root">
       <Confetti active={confetti} />
-      <ParticleBurst active={particleBurst} onDone={() => setParticleBurst(false)} />
       <FeedbackOverlay
         show={feedback.show} correct={feedback.correct} gif={feedback.gif} msg={feedback.msg}
         onDone={afterFeedback}
@@ -639,10 +464,7 @@ function CandidateExperience() {
         />
       )}
       {stage === "waiting" && (
-        <WaitingScreen
-          myScore={myScore} streak={streak} userId={user?._id}
-          leaderboard={leaderboard} answeredCount={answeredCount} liveTotal={liveTotal}
-        />
+        <WaitingScreen myScore={myScore} streak={streak} />
       )}
       {stage === "leaderboard" && (
         <CandidateLeaderboardScreen
@@ -691,15 +513,12 @@ function WaitingScreen({ myScore, streak }) {
     "Results incoming. Brace yourself. 🫣",
   ];
   const quip = useMemo(() => randomFrom(quips), []);
-  const medals = ["🥇","🥈","🥉"];
-
   return (
-    <div className="screen" style={{ flexDirection:"column", gap:16, alignItems:"center" }}>
-      <div className="register-card" style={{ alignItems:"center", gap:14, width:"min(520px,100%)" }}>
-        <div style={{ fontSize:"3rem", animation:"mascotBounce 2s ease-in-out infinite" }}>🔒</div>
-        <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.6rem" }}>Answer locked in!</h2>
+    <div className="screen" style={{ flexDirection:"column", gap:20, textAlign:"center" }}>
+      <div className="register-card" style={{ alignItems:"center" }}>
+        <div style={{ fontSize:"4rem", animation:"mascotBounce 2s ease-in-out infinite" }}>🕐</div>
+        <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.8rem" }}>Answer locked in!</h2>
         <div className="hero-quip">{quip}</div>
-
         <div className="result-stats" style={{ width:"100%" }}>
           <div className="rstat">
             <span className="rstat-val">⭐ {myScore}</span>
@@ -709,66 +528,9 @@ function WaitingScreen({ myScore, streak }) {
             <span className="rstat-val">🔥 {streak}</span>
             <span className="rstat-lbl">Streak</span>
           </div>
-          <div className="rstat">
-            <span className="rstat-val">✅ {answeredCount}/{liveTotal}</span>
-            <span className="rstat-lbl">Answered</span>
-          </div>
         </div>
-
-        {/* Live leaderboard */}
-        {leaderboard.length > 0 && (
-          <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:6 }}>
-            <div style={{
-              fontFamily:"'Fredoka One',cursive", fontSize:"0.95rem",
-              color:"var(--text)", display:"flex", alignItems:"center", gap:6
-            }}>
-              📊 Live Standings
-              <span style={{
-                fontSize:"0.65rem", background:"rgba(230,57,70,0.1)",
-                border:"1.5px solid rgba(230,57,70,0.25)", color:"#c0392b",
-                padding:"2px 8px", borderRadius:"999px", fontFamily:"'Nunito',sans-serif",
-                fontWeight:900, animation:"pulseBadge 1.5s ease-in-out infinite"
-              }}>● LIVE</span>
-            </div>
-            {leaderboard.slice(0, 8).map((row, i) => {
-              const isMe = row.userId === userId;
-              const prevRank = i; // rank is always sorted, animate color only
-              return (
-                <div key={row.userId}
-                  style={{
-                    display:"grid", gridTemplateColumns:"36px 1fr auto",
-                    alignItems:"center", gap:8,
-                    padding:"9px 12px", borderRadius:12,
-                    background: isMe ? "rgba(244,132,95,0.12)" : "var(--warm1)",
-                    border: isMe ? "2px solid rgba(244,132,95,0.4)" : "1.5px solid var(--border)",
-                    transition:"all 0.4s ease",
-                  }}
-                >
-                  <span style={{ fontSize:"1.2rem", textAlign:"center" }}>{medals[i] || `${i+1}`}</span>
-                  <div>
-                    <strong style={{ fontSize:"0.88rem", color:"var(--text)", display:"block" }}>
-                      {row.name}{isMe ? " (you)" : ""}
-                    </strong>
-                    {row.lastAnsweredAt && (
-                      <span style={{ fontSize:"0.68rem", color:"var(--text-3)", fontWeight:700 }}>
-                        ⏱ {new Date(row.lastAnsweredAt).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" })}
-                      </span>
-                    )}
-                  </div>
-                  <span style={{
-                    fontFamily:"'Fredoka One',cursive", fontSize:"1rem",
-                    color:"var(--coral)", minWidth:60, textAlign:"right"
-                  }}>
-                    {row.totalScore} pts
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <p style={{ fontSize:"0.8rem", color:"var(--text-3)", fontWeight:700 }}>
-          ⏳ Waiting for admin to advance to next question…
+        <p style={{ fontSize:"0.82rem", color:"var(--text-3)", fontWeight:700 }}>
+          Waiting for admin to reveal leaderboard…
         </p>
       </div>
     </div>
@@ -827,15 +589,8 @@ function FinishedScreen({ leaderboard, userId, myScore, onRestart }) {
   const grade = pct >= 90 ? GRADE_DATA.S : pct >= 75 ? GRADE_DATA.A : pct >= 60 ? GRADE_DATA.B : pct >= 40 ? GRADE_DATA.C : GRADE_DATA.F;
   const medals = ["🥇","🥈","🥉"];
 
-  const [fireworks, setFireworks] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setFireworks(true), 200);
-    return () => clearTimeout(t);
-  }, []);
-
   return (
     <div className="screen result-screen">
-      <FireworksBurst active={fireworks} />
       <div className="result-card">
         <div className="result-grade-badge" style={{ background:`${grade.color}22`, borderColor:`${grade.color}44` }}>
           <span className="result-emoji">{grade.emoji}</span>
@@ -1137,12 +892,6 @@ function AdminLiveMode({ quizzes }) {
       const d = JSON.parse(e.data);
       setAnsweredCount(d.answeredCount);
       setTotalPlayers(d.total);
-    });
-    es.addEventListener("live_leaderboard", (e) => {
-      const d = JSON.parse(e.data);
-      setLeaderboard(d.leaderboard || []);
-      setAnsweredCount(d.answeredCount || 0);
-      setTotalPlayers(d.total || 0);
     });
     es.addEventListener("leaderboard", (e) => {
       const d = JSON.parse(e.data);
