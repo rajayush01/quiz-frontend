@@ -20,7 +20,6 @@ async function apiRequest(path, options = {}) {
 }
 
 const api = {
-  // ── Existing ──────────────────────────────────────────────────────────
   registerUser:      (name)    => apiRequest("/users/register", { method: "POST", body: JSON.stringify({ name }) }),
   loginAdmin:        (payload) => apiRequest("/admin/login",    { method: "POST", body: JSON.stringify(payload) }),
   getQuestions:      ()        => apiRequest("/admin/questions"),
@@ -35,17 +34,38 @@ const api = {
   getAdminResults:   ()        => apiRequest("/admin/results"),
   getAdminLeaderboard: ()      => apiRequest("/admin/results/leaderboard"),
   getAdminStats:     ()        => apiRequest("/admin/results/stats"),
-
-  // ── Live session ──────────────────────────────────────────────────────
   liveStart:         (quizId)  => apiRequest("/live/start",        { method: "POST", body: JSON.stringify({ quizId }) }),
   liveNext:          ()        => apiRequest("/live/next",          { method: "POST" }),
   liveEndQuestion:   ()        => apiRequest("/live/end-question",  { method: "POST" }),
   liveLeaderboard:   ()        => apiRequest("/live/leaderboard"),
   liveState:         ()        => apiRequest("/live/state"),
-
   liveJoin:   (userId) => apiRequest("/live/join",   { method: "POST", body: JSON.stringify({ userId }) }),
   liveAnswer: (payload)=> apiRequest("/live/answer", { method: "POST", body: JSON.stringify(payload) }),
+  getOpenQuestion:    ()        => apiRequest("/open-question"),
+  submitOpenResponse: (payload) => apiRequest("/open-question/respond", { method: "POST", body: JSON.stringify(payload) }),
+  // Admin
+  adminGetOpenQuestion:   () => apiRequest("/open-question/admin"),
+  adminSetOpenQuestion:   (q) => apiRequest("/open-question/admin", { method: "POST", body: JSON.stringify({ question: q }) }),
+  adminGetOpenResponses:  () => apiRequest("/open-question/admin/responses"),
+  adminDeleteOpenQuestion:() => apiRequest("/open-question/admin", { method: "DELETE" }),
 };
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function fmtMs(ms) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+function fmtMsShort(ms) {
+  if (ms == null) return "—";
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+function fmtTimestamp(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ── Sarcastic messages ─────────────────────────────────────────────────────
 const CORRECT_MSGS = [
@@ -79,9 +99,7 @@ const LOADING_QUIPS = [
 ];
 const BG_STICKERS = ["🧠","💀","🤡","🎯","🦆","🍕","😅","🧸","🎪","🌮","🤓","🫠","💫","🎲","🥴"];
 
-function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-// ── Confetti ────────────────────────────────────────────────────────────────
+// ── Confetti ─────────────────────────────────────────────────────────────────
 function Confetti({ active }) {
   const canvasRef = useRef(null);
   useEffect(() => {
@@ -92,13 +110,10 @@ function Confetti({ active }) {
     canvas.height = window.innerHeight;
     const colors = ["#ff9f7f","#ffc4a0","#b5ead7","#ffdac1","#e2f0cb","#c7ceea","#ffb7b2","#f8e1b4"];
     const particles = Array.from({ length: 150 }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * -canvas.height,
-      r: Math.random() * 10 + 4,
-      d: Math.random() * 6 + 2,
+      x: Math.random() * canvas.width, y: Math.random() * -canvas.height,
+      r: Math.random() * 10 + 4, d: Math.random() * 6 + 2,
       color: colors[Math.floor(Math.random() * colors.length)],
-      tilt: Math.random() * 10 - 10,
-      tiltAngle: 0,
+      tilt: Math.random() * 10 - 10, tiltAngle: 0,
       tiltIncrement: Math.random() * 0.05 + 0.02,
     }));
     let frame;
@@ -133,7 +148,6 @@ function FloatingStickers() {
     </div>
   );
 }
-
 function BlobBg() {
   return (
     <div className="blob-bg">
@@ -201,10 +215,10 @@ function Timer({ seconds, total }) {
   );
 }
 
-function FeedbackOverlay({ show, correct, gif, msg, onDone }) {
+function FeedbackOverlay({ show, correct, gif, msg, durationMs, speedBonus, onDone }) {
   useEffect(() => {
     if (!show) return;
-    const t = setTimeout(onDone, 2400);
+    const t = setTimeout(onDone, 2800);
     return () => clearTimeout(t);
   }, [show]);
   if (!show) return null;
@@ -216,11 +230,66 @@ function FeedbackOverlay({ show, correct, gif, msg, onDone }) {
           <div className="feedback-label">{correct ? "CORRECT!" : "WRONG!"}</div>
         </div>
         <div className="feedback-msg">{msg}</div>
+        {/* ── Timing chip ── */}
+        <div className="feedback-timing-row">
+          <div className="ft-chip">
+            <span className="ft-icon">⏱</span>
+            <span className="ft-val">{fmtMs(durationMs)}</span>
+            <span className="ft-lbl">response time</span>
+          </div>
+          {correct && speedBonus > 0 && (
+            <div className="ft-chip bonus">
+              <span className="ft-icon">⚡</span>
+              <span className="ft-val">+{speedBonus}</span>
+              <span className="ft-lbl">speed bonus</span>
+            </div>
+          )}
+          {correct && speedBonus === 0 && (
+            <div className="ft-chip slow">
+              <span className="ft-icon">🐢</span>
+              <span className="ft-val">+0</span>
+              <span className="ft-lbl">speed bonus (too slow)</span>
+            </div>
+          )}
+        </div>
         <div className="feedback-gif-wrap">
           <img src={gif} alt="reaction gif" className="feedback-gif" loading="lazy" />
           <div className="gif-caption">{correct ? "ur brain works! wild!" : "rip. F in chat."}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Timing breakdown component (reused in leaderboards & results) ─────────
+function TimingBreakdown({ timings, totalDurationMs, compact = false }) {
+  if (!timings?.length) return null;
+  return (
+    <div className={`timing-breakdown ${compact ? "compact" : ""}`}>
+      {!compact && (
+        <div className="tb-header">
+          <span className="tb-title">⏱ Time Breakdown</span>
+          <span className="tb-total">Total: {fmtMs(totalDurationMs)}</span>
+        </div>
+      )}
+      <div className="tb-rows">
+        {timings.map((t, i) => (
+          <div key={i} className={`tb-row ${t.isCorrect ? "correct" : "wrong"}`}>
+            <span className="tb-qnum">Q{t.questionIndex + 1}</span>
+            <div className="tb-bar-wrap">
+              <div className="tb-bar" style={{ width: `${Math.min(100, (t.durationMs / 20000) * 100)}%`,
+                background: t.isCorrect ? "#52b788" : "#e63946" }} />
+            </div>
+            <span className="tb-dur">{fmtMsShort(t.durationMs)}</span>
+            <span className="tb-pts">{t.isCorrect ? `+${t.pointsEarned}` : "✗"}</span>
+          </div>
+        ))}
+      </div>
+      {compact && (
+        <div className="tb-footer-total">
+          Total time: <strong>{fmtMs(totalDurationMs)}</strong>
+        </div>
+      )}
     </div>
   );
 }
@@ -251,43 +320,41 @@ function App() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CANDIDATE FLOW  (SSE-driven, Mentimeter-style)
+// CANDIDATE FLOW
 // ════════════════════════════════════════════════════════════════════════════
 function CandidateExperience() {
-  // Registration
-  const [stage,    setStage]    = useState("register"); // register | lobby | question | waiting | leaderboard | finished
+  const [stage,    setStage]    = useState("register");
   const [name,     setName]     = useState("");
   const [user,     setUser]     = useState(null);
   const [attemptId,setAttemptId]= useState(null);
-  const [sessionInfo, setSessionInfo] = useState(null); // { quizTitle, totalQuestions }
+  const [sessionInfo, setSessionInfo] = useState(null);
 
-  // Live question state
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [questionIndex,   setQuestionIndex]   = useState(0);
   const [totalQuestions,  setTotalQuestions]  = useState(0);
   const [timeLimitSecs,   setTimeLimitSecs]   = useState(20);
-  const [questionStartedAt, setQuestionStartedAt] = useState(null);
 
-  // Answer state
   const [answered,  setAnswered]  = useState(false);
-  const [feedback,  setFeedback]  = useState({ show:false, correct:false, gif:"", msg:"" });
+  const [feedback,  setFeedback]  = useState({ show:false, correct:false, gif:"", msg:"", durationMs:null, speedBonus:0 });
   const [myScore,   setMyScore]   = useState(0);
+  const [myTotalDuration, setMyTotalDuration] = useState(0);
+  const [myTimings, setMyTimings] = useState([]); // local copy of per-question timings
   const [streak,    setStreak]    = useState(0);
 
-  // Leaderboard
   const [leaderboard, setLeaderboard] = useState([]);
-
-  // Timer (client-side countdown mirrored from server)
   const [timerSec, setTimerSec] = useState(20);
   const timerRef = useRef(null);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
   const [confetti,setConfetti]= useState(false);
-
   const sseRef = useRef(null);
 
-  // ── Client-side timer (cosmetic, server is authoritative) ─────────────
+  const [openQuestion,   setOpenQuestion]   = useState(null);
+  const [openSubmitted,  setOpenSubmitted]  = useState(false);
+  const [openAnswer,     setOpenAnswer]     = useState("");
+  const [openSubmitting, setOpenSubmitting] = useState(false);
+
   const startClientTimer = useCallback((secs) => {
     clearInterval(timerRef.current);
     setTimerSec(secs);
@@ -299,24 +366,18 @@ function CandidateExperience() {
     }, 1000);
   }, []);
 
-  // ── SSE connection ─────────────────────────────────────────────────────
   const connectSSE = useCallback((uid) => {
     if (sseRef.current) sseRef.current.close();
     const es = new EventSource(`${API_BASE_URL}/live/stream?userId=${uid}`);
     sseRef.current = es;
 
-    es.addEventListener("sync", (e) => {
-      const d = JSON.parse(e.data);
-      handleSyncEvent(d);
-    });
-
+    es.addEventListener("sync", (e) => handleSyncEvent(JSON.parse(e.data)));
     es.addEventListener("session_started", (e) => {
       const d = JSON.parse(e.data);
       setSessionInfo({ quizTitle: d.quizTitle, totalQuestions: d.totalQuestions });
       setTotalQuestions(d.totalQuestions);
       setStage("lobby");
     });
-
     es.addEventListener("question", (e) => {
       const d = JSON.parse(e.data);
       clearInterval(timerRef.current);
@@ -324,20 +385,17 @@ function CandidateExperience() {
       setQuestionIndex(d.questionIndex);
       setTotalQuestions(d.totalQuestions);
       setTimeLimitSecs(d.timeLimitSecs);
-      setQuestionStartedAt(new Date(d.startedAt));
       setAnswered(false);
-      setFeedback({ show:false, correct:false, gif:"", msg:"" });
+      setFeedback({ show:false, correct:false, gif:"", msg:"", durationMs:null, speedBonus:0 });
       setStage("question");
       startClientTimer(d.timeLimitSecs);
     });
-
     es.addEventListener("leaderboard", (e) => {
       const d = JSON.parse(e.data);
       clearInterval(timerRef.current);
       setLeaderboard(d.leaderboard || []);
       setStage("leaderboard");
     });
-
     es.addEventListener("session_finished", (e) => {
       const d = JSON.parse(e.data);
       clearInterval(timerRef.current);
@@ -345,16 +403,12 @@ function CandidateExperience() {
       if (d.leaderboard?.[0]?.userId === user?._id) setConfetti(true);
       setStage("finished");
     });
-
-    es.onerror = () => {
-      // will auto-reconnect
-    };
+    es.onerror = () => {};
   }, [user, startClientTimer]);
 
   function handleSyncEvent(d) {
     setTotalQuestions(d.totalQuestions || 0);
     if (d.quizTitle) setSessionInfo(s => ({ ...s, quizTitle: d.quizTitle, totalQuestions: d.totalQuestions }));
-
     if (d.phase === "lobby") {
       setStage("lobby");
     } else if (d.phase === "question" && d.question) {
@@ -362,7 +416,6 @@ function CandidateExperience() {
       setQuestionIndex(d.currentIndex);
       setTimeLimitSecs(d.timeLimitSecs || 20);
       const start = new Date(d.questionStartedAt);
-      setQuestionStartedAt(start);
       const elapsed = Math.floor((Date.now() - start) / 1000);
       const remaining = Math.max(0, (d.timeLimitSecs || 20) - elapsed);
       startClientTimer(remaining);
@@ -385,7 +438,6 @@ function CandidateExperience() {
     };
   }, []);
 
-  // ── Register & join ───────────────────────────────────────────────────
   const registerAndJoin = async () => {
     if (!name.trim()) return;
     setLoading(true); setError("");
@@ -397,15 +449,12 @@ function CandidateExperience() {
       setSessionInfo({ quizTitle: joined.quizTitle, totalQuestions: joined.totalQuestions });
       setTotalQuestions(joined.totalQuestions);
       connectSSE(reg.user._id);
-
-      // Sync to current server state
       const state = await api.liveState();
       handleSyncEvent(state);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
 
-  // ── Answer a question ─────────────────────────────────────────────────
   const handleAnswer = async (val) => {
     if (answered || stage !== "question" || !currentQuestion) return;
     setAnswered(true);
@@ -418,76 +467,169 @@ function CandidateExperience() {
       });
       const isCorrect = result.isCorrect;
       setMyScore(result.totalScore);
+      setMyTotalDuration(result.totalDurationMs || 0);
+
+      // Append to local timings
+      setMyTimings(prev => [...prev, {
+        questionIndex: result.questionIndex ?? questionIndex,
+        durationMs:    result.durationMs,
+        answeredAt:    result.answeredAt,
+        isCorrect,
+        pointsEarned:  result.pointsEarned,
+      }]);
+
       if (isCorrect) setStreak(s => s + 1);
       else           setStreak(0);
 
       const gif = isCorrect ? randomFrom(CORRECT_GIFS) : randomFrom(WRONG_GIFS);
       const msg = isCorrect ? randomFrom(CORRECT_MSGS)  : randomFrom(WRONG_MSGS);
-      setFeedback({ show:true, correct:isCorrect, gif, msg });
-    } catch (e) {
-      // If answer submission fails, still show "answered" state
-    }
+      setFeedback({ show:true, correct:isCorrect, gif, msg, durationMs: result.durationMs, speedBonus: result.speedBonus || 0 });
+    } catch (_) {}
   };
 
   const afterFeedback = () => {
-    setFeedback({ show:false, correct:false, gif:"", msg:"" });
-    setStage("waiting"); // wait for admin to push leaderboard / next question
+    setFeedback({ show:false, correct:false, gif:"", msg:"", durationMs:null, speedBonus:0 });
+    setStage("waiting");
   };
 
   const restart = () => {
     setStage("register"); setName(""); setUser(null); setAttemptId(null);
-    setCurrentQuestion(null); setAnswered(false); setFeedback({ show:false, correct:false, gif:"", msg:"" });
-    setMyScore(0); setStreak(0); setConfetti(false); setLeaderboard([]);
+    setCurrentQuestion(null); setAnswered(false);
+    setFeedback({ show:false, correct:false, gif:"", msg:"", durationMs:null, speedBonus:0 });
+    setMyScore(0); setMyTotalDuration(0); setMyTimings([]); setStreak(0);
+    setConfetti(false); setLeaderboard([]);
     clearInterval(timerRef.current);
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
+  };
+
+  useEffect(() => {
+    // Fetch the open question once the user has registered
+    if (!user) return;
+    api.getOpenQuestion()
+      .then(d => { if (d?.question) setOpenQuestion(d.question); })
+      .catch(() => {});
+  }, [user]);
+
+  const handleOpenSubmit = async () => {
+    if (!openAnswer.trim() || !openQuestion || openSubmitting) return;
+    setOpenSubmitting(true);
+    try {
+      await api.submitOpenResponse({
+        userId:         user._id,
+        openQuestionId: openQuestion._id,
+        answer:         openAnswer.trim(),
+      });
+      setOpenSubmitted(true);
+    } catch (e) {
+      // swallow silently — not critical
+    } finally {
+      setOpenSubmitting(false);
+    }
   };
 
   return (
     <div className="candidate-root">
       <Confetti active={confetti} />
       <FeedbackOverlay
-        show={feedback.show} correct={feedback.correct} gif={feedback.gif} msg={feedback.msg}
+        show={feedback.show} correct={feedback.correct} gif={feedback.gif}
+        msg={feedback.msg} durationMs={feedback.durationMs} speedBonus={feedback.speedBonus}
         onDone={afterFeedback}
       />
-
-      {stage === "register" && (
-        <RegisterScreen name={name} setName={setName} loading={loading} error={error} onStart={registerAndJoin} />
-      )}
-      {stage === "lobby" && (
-        <LobbyScreen sessionInfo={sessionInfo} />
-      )}
-      {stage === "question" && currentQuestion && (
+      {stage === "register"    && <RegisterScreen name={name} setName={setName} loading={loading} error={error} onStart={registerAndJoin} />}
+      {stage === "lobby"       && <LobbyScreen sessionInfo={sessionInfo} />}
+      {stage === "question"    && currentQuestion && (
         <QuestionScreen
           question={currentQuestion} index={questionIndex} total={totalQuestions}
           myScore={myScore} streak={streak} timerSec={timerSec}
           answered={answered} onAnswer={handleAnswer}
         />
       )}
-      {stage === "waiting" && (
-        <WaitingScreen myScore={myScore} streak={streak} />
-      )}
+      {stage === "waiting"     && <WaitingScreen myScore={myScore} streak={streak} myTotalDuration={myTotalDuration} myTimings={myTimings} questionIndex={questionIndex} />}
       {stage === "leaderboard" && (
         <CandidateLeaderboardScreen
           leaderboard={leaderboard} userId={user?._id}
-          myScore={myScore} questionIndex={questionIndex} totalQuestions={totalQuestions}
+          myScore={myScore} myTotalDuration={myTotalDuration} myTimings={myTimings}
+          questionIndex={questionIndex} totalQuestions={totalQuestions}
         />
       )}
       {stage === "finished" && (
-        <FinishedScreen leaderboard={leaderboard} userId={user?._id} myScore={myScore} onRestart={restart} />
+        <FinishedScreen leaderboard={leaderboard} userId={user?._id} myScore={myScore}
+          myTotalDuration={myTotalDuration} myTimings={myTimings} onRestart={restart} />
+      )}
+      {user && openQuestion && stage !== "register" && (
+        <OpenQuestionCard
+          question={openQuestion}
+          answer={openAnswer}
+          setAnswer={setOpenAnswer}
+          submitted={openSubmitted}
+          submitting={openSubmitting}
+          onSubmit={handleOpenSubmit}
+        />
       )}
     </div>
   );
 }
 
-// ── Lobby (waiting for admin to start) ───────────────────────────────────
+
+function OpenQuestionCard({ question, answer, setAnswer, submitted, submitting, onSubmit }) {
+  const [collapsed, setCollapsed] = React.useState(false);
+ 
+  if (!question) return null;
+ 
+  return (
+    <div className={`oq-float-card ${collapsed ? "collapsed" : ""}`}>
+      <div className="oq-float-header" onClick={() => setCollapsed(c => !c)}>
+        <span className="oq-float-icon">💬</span>
+        <span className="oq-float-title">Open Question</span>
+        {submitted && <span className="oq-float-done">✅ Submitted</span>}
+        <span className="oq-float-toggle">{collapsed ? "▲" : "▼"}</span>
+      </div>
+ 
+      {!collapsed && (
+        <div className="oq-float-body">
+          <p className="oq-float-q">{question.question}</p>
+ 
+          {submitted ? (
+            <div className="oq-float-submitted">
+              <span>🎉</span>
+              <span>Your response has been recorded. Thanks!</span>
+            </div>
+          ) : (
+            <>
+              <textarea
+                className="glass-textarea"
+                style={{ minHeight: 72, fontSize: "0.88rem" }}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Type your answer here… (you can submit anytime)"
+              />
+              <button
+                className="cta-button"
+                style={{ padding: "10px 18px", fontSize: "0.88rem", flexDirection: "row", gap: 6 }}
+                onClick={onSubmit}
+                disabled={submitting || !answer.trim()}
+              >
+                {submitting ? <Spinner /> : "📤 Submit Response"}
+              </button>
+              <p style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, marginTop: 4 }}>
+                This is separate from the quiz — no right or wrong answer!
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Lobby ──────────────────────────────────────────────────────────────────
 function LobbyScreen({ sessionInfo }) {
   return (
     <div className="screen" style={{ flexDirection:"column", gap:20, textAlign:"center" }}>
       <div className="register-card" style={{ alignItems:"center" }}>
         <div style={{ fontSize:"4rem", animation:"mascotBounce 2s ease-in-out infinite" }}>⏳</div>
-        <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"2rem" }}>
-          Waiting for the quiz to start…
-        </h2>
+        <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"2rem" }}>Waiting for the quiz to start…</h2>
         {sessionInfo && (
           <div className="quiz-preview-card" style={{ width:"100%" }}>
             <div className="qp-top">
@@ -495,7 +637,7 @@ function LobbyScreen({ sessionInfo }) {
               <span className="qp-meta-right">{sessionInfo.totalQuestions} questions</span>
             </div>
             <div className="qp-title">{sessionInfo.quizTitle}</div>
-            <div className="qp-footer">Admin will push questions one at a time. Stay sharp. 👀</div>
+            <div className="qp-footer">⚡ Speed matters! Faster correct answers = more bonus points + better tie-break rank. 👀</div>
           </div>
         )}
         <div className="hero-quip">The admin is preparing your humiliation… please stand by.</div>
@@ -504,8 +646,8 @@ function LobbyScreen({ sessionInfo }) {
   );
 }
 
-// ── Waiting between questions ─────────────────────────────────────────────
-function WaitingScreen({ myScore, streak }) {
+// ── Waiting between questions ──────────────────────────────────────────────
+function WaitingScreen({ myScore, streak, myTotalDuration, myTimings, questionIndex }) {
   const quips = [
     "Your answer has been locked in. No take-backs.",
     "Waiting for others to finish embarrassing themselves…",
@@ -515,7 +657,7 @@ function WaitingScreen({ myScore, streak }) {
   const quip = useMemo(() => randomFrom(quips), []);
   return (
     <div className="screen" style={{ flexDirection:"column", gap:20, textAlign:"center" }}>
-      <div className="register-card" style={{ alignItems:"center" }}>
+      <div className="register-card" style={{ alignItems:"center", gap:16 }}>
         <div style={{ fontSize:"4rem", animation:"mascotBounce 2s ease-in-out infinite" }}>🕐</div>
         <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.8rem" }}>Answer locked in!</h2>
         <div className="hero-quip">{quip}</div>
@@ -528,7 +670,15 @@ function WaitingScreen({ myScore, streak }) {
             <span className="rstat-val">🔥 {streak}</span>
             <span className="rstat-lbl">Streak</span>
           </div>
+          <div className="rstat">
+            <span className="rstat-val">⏱ {fmtMsShort(myTotalDuration)}</span>
+            <span className="rstat-lbl">Total Time</span>
+          </div>
         </div>
+        {/* Per-question timing so far */}
+        {myTimings.length > 0 && (
+          <TimingBreakdown timings={myTimings} totalDurationMs={myTotalDuration} compact />
+        )}
         <p style={{ fontSize:"0.82rem", color:"var(--text-3)", fontWeight:700 }}>
           Waiting for admin to reveal leaderboard…
         </p>
@@ -537,13 +687,15 @@ function WaitingScreen({ myScore, streak }) {
   );
 }
 
-// ── Candidate leaderboard between questions ───────────────────────────────
-function CandidateLeaderboardScreen({ leaderboard, userId, myScore, questionIndex, totalQuestions }) {
+// ── Candidate leaderboard between questions ────────────────────────────────
+function CandidateLeaderboardScreen({ leaderboard, userId, myScore, myTotalDuration, myTimings, questionIndex, totalQuestions }) {
+  const [expandedRow, setExpandedRow] = useState(null);
   const myRank = leaderboard.findIndex(r => r.userId === userId) + 1;
   const medals = ["🥇","🥈","🥉"];
+
   return (
     <div className="screen" style={{ flexDirection:"column", alignItems:"center" }}>
-      <div className="register-card" style={{ alignItems:"center", gap:16 }}>
+      <div className="register-card" style={{ alignItems:"center", gap:16, width:"min(560px,100%)" }}>
         <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.8rem" }}>
           🏆 Leaderboard — Q{questionIndex + 1}/{totalQuestions}
         </h2>
@@ -552,19 +704,66 @@ function CandidateLeaderboardScreen({ leaderboard, userId, myScore, questionInde
             You're #{myRank} — {myRank === 1 ? "Top of the class! Suspicious." : myRank <= 3 ? "Podium! Don't get cocky." : "Room to grow! (a lot of room)"}
           </div>
         )}
-        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:8 }}>
-          {leaderboard.slice(0,10).map((row, i) => (
-            <div key={row.userId} className="lb-row"
-              style={row.userId === userId ? { background:"rgba(244,132,95,0.12)", borderColor:"rgba(244,132,95,0.4)" } : {}}
-            >
-              <span className="lb-rank">{medals[i] || `${i+1}`}</span>
-              <div>
-                <strong>{row.name}{row.userId === userId ? " (you)" : ""}</strong>
-                <small>{row.totalScore} pts</small>
-              </div>
-            </div>
-          ))}
+
+        {/* Tie-break explainer */}
+        <div className="tiebreak-note">
+          <span>🔗</span> Ties broken by: <strong>total cumulative time</strong> → fastest last answer → earliest timestamp
         </div>
+
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:8 }}>
+          {leaderboard.slice(0,10).map((row, i) => {
+            const isMe = row.userId === userId;
+            const isExpanded = expandedRow === row.userId;
+            return (
+              <div key={row.userId}>
+                <div
+                  className="lb-row lb-row-rich"
+                  style={isMe ? { background:"rgba(244,132,95,0.12)", borderColor:"rgba(244,132,95,0.4)" } : {}}
+                  onClick={() => setExpandedRow(isExpanded ? null : row.userId)}
+                >
+                  <span className="lb-rank">{medals[i] || `${i+1}`}</span>
+                  <div className="lb-info">
+                    <div className="lb-name-row">
+                      <strong>{row.name}{isMe ? " (you)" : ""}</strong>
+                      {row.totalScore !== leaderboard[0]?.totalScore && i > 0 && (
+                        <span className="lb-tie-indicator" title="May be tied — sorted by time">
+                          {leaderboard[i-1]?.totalScore === row.totalScore ? "🔗 tied" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="lb-meta-row">
+                      <span className="lb-score">⭐ {row.totalScore} pts</span>
+                      <span className="lb-dur">⏱ {fmtMsShort(row.totalDurationMs)} total</span>
+                      <span className="lb-answered">✅ {row.questionsAnswered}/{totalQuestions}</span>
+                    </div>
+                  </div>
+                  <span className="lb-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+                </div>
+                {isExpanded && row.questionTimings?.length > 0 && (
+                  <div className="lb-timings-expanded">
+                    <TimingBreakdown timings={row.questionTimings} totalDurationMs={row.totalDurationMs} compact />
+                    {row.lastAnsweredAt && (
+                      <div className="lb-timestamp">
+                        Last answered at: <strong>{fmtTimestamp(row.lastAnsweredAt)}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* My timings panel */}
+        {myTimings.length > 0 && (
+          <div style={{ width:"100%", marginTop:8 }}>
+            <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"0.95rem", marginBottom:8, color:"var(--text-2)" }}>
+              📊 Your Q-by-Q breakdown
+            </div>
+            <TimingBreakdown timings={myTimings} totalDurationMs={myTotalDuration} />
+          </div>
+        )}
+
         <p style={{ fontSize:"0.8rem", color:"var(--text-3)", fontWeight:700 }}>
           ⏳ Waiting for admin to push next question…
         </p>
@@ -573,7 +772,7 @@ function CandidateLeaderboardScreen({ leaderboard, userId, myScore, questionInde
   );
 }
 
-// ── Finished screen ───────────────────────────────────────────────────────
+// ── Finished screen ──────────────────────────────────────────────────────
 const GRADE_DATA = {
   S: { label:"Actual Genius",       emoji:"👑", color:"#f4a261", sub:"Okay fine, you're kind of impressive.",             gif:"https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif" },
   A: { label:"Pretty Smart",        emoji:"🥇", color:"#52b788", sub:"Not bad at all! Go touch grass to celebrate.",      gif:"https://media.giphy.com/media/26u4lOMA8JKSnL9Uk/giphy.gif" },
@@ -582,8 +781,9 @@ const GRADE_DATA = {
   F: { label:"Magnificently Wrong", emoji:"🤡", color:"#e63946", sub:"Statistically impressive. You got so few right.", gif:"https://media.giphy.com/media/l2JehQ2GitHGdVG9y/giphy.gif" },
 };
 
-function FinishedScreen({ leaderboard, userId, myScore, onRestart }) {
-  const myRank = leaderboard.findIndex(r => r.userId === userId) + 1;
+function FinishedScreen({ leaderboard, userId, myScore, myTotalDuration, myTimings, onRestart }) {
+  const [expandedRow, setExpandedRow] = useState(null);
+  const myRank  = leaderboard.findIndex(r => r.userId === userId) + 1;
   const topScore = leaderboard[0]?.totalScore || 1;
   const pct  = Math.round((myScore / topScore) * 100);
   const grade = pct >= 90 ? GRADE_DATA.S : pct >= 75 ? GRADE_DATA.A : pct >= 60 ? GRADE_DATA.B : pct >= 40 ? GRADE_DATA.C : GRADE_DATA.F;
@@ -602,25 +802,87 @@ function FinishedScreen({ leaderboard, userId, myScore, onRestart }) {
         <div className="result-gif-wrap">
           <img src={grade.gif} alt="result reaction" className="result-gif" />
         </div>
+
         <div className="result-score-big">{myScore}<span> pts</span></div>
         <div className="result-pct">
           Rank #{myRank > 0 ? myRank : "?"} of {leaderboard.length} • {myRank === 1 ? "Undisputed champion! Somehow." : "Better luck next time 💀"}
         </div>
 
-        {/* Top 5 final leaderboard */}
+        {/* Score + time stats */}
+        <div className="result-stats" style={{ width:"100%" }}>
+          <div className="rstat">
+            <span className="rstat-val">⭐ {myScore}</span>
+            <span className="rstat-lbl">Score</span>
+          </div>
+          <div className="rstat">
+            <span className="rstat-val">⏱ {fmtMsShort(myTotalDuration)}</span>
+            <span className="rstat-lbl">Total Time</span>
+          </div>
+          <div className="rstat">
+            <span className="rstat-val">✅ {myTimings.filter(t=>t.isCorrect).length}/{myTimings.length}</span>
+            <span className="rstat-lbl">Correct</span>
+          </div>
+        </div>
+
+        {/* My per-question timing breakdown */}
+        {myTimings.length > 0 && (
+          <div style={{ width:"100%", textAlign:"left" }}>
+            <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"0.95rem", marginBottom:8, color:"var(--text-2)" }}>
+              📊 Your Performance
+            </div>
+            <TimingBreakdown timings={myTimings} totalDurationMs={myTotalDuration} />
+          </div>
+        )}
+
+        {/* Final leaderboard with timings */}
         <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:8 }}>
           <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1rem", color:"var(--text)" }}>🏆 Final Standings</div>
-          {leaderboard.slice(0,5).map((row, i) => (
-            <div key={row.userId} className="lb-row"
-              style={row.userId === userId ? { background:"rgba(244,132,95,0.12)", borderColor:"rgba(244,132,95,0.4)" } : {}}
-            >
-              <span className="lb-rank">{medals[i] || `${i+1}`}</span>
-              <div>
-                <strong>{row.name}{row.userId === userId ? " (you)" : ""}</strong>
-                <small>{row.totalScore} pts</small>
+          <div className="tiebreak-note">
+            <span>🔗</span> Ties broken by: <strong>cumulative response time</strong>
+          </div>
+          {leaderboard.slice(0,10).map((row, i) => {
+            const isMe = row.userId === userId;
+            const isExpanded = expandedRow === row.userId;
+            const prevScore = i > 0 ? leaderboard[i-1]?.totalScore : null;
+            const isTied = prevScore !== null && prevScore === row.totalScore;
+            return (
+              <div key={row.userId}>
+                <div
+                  className="lb-row lb-row-rich"
+                  style={isMe ? { background:"rgba(244,132,95,0.12)", borderColor:"rgba(244,132,95,0.4)" } : {}}
+                  onClick={() => setExpandedRow(isExpanded ? null : row.userId)}
+                >
+                  <span className="lb-rank">{medals[i] || `${i+1}`}</span>
+                  <div className="lb-info">
+                    <div className="lb-name-row">
+                      <strong>{row.name}{isMe ? " (you)" : ""}</strong>
+                      {isTied && <span className="lb-tie-indicator">🔗 tied→time</span>}
+                    </div>
+                    <div className="lb-meta-row">
+                      <span className="lb-score">⭐ {row.totalScore} pts</span>
+                      <span className="lb-dur">⏱ {fmtMsShort(row.totalDurationMs)}</span>
+                      <span className="lb-answered">✅ {row.questionsAnswered}</span>
+                    </div>
+                  </div>
+                  <span className="lb-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+                </div>
+                {isExpanded && (
+                  <div className="lb-timings-expanded">
+                    {row.questionTimings?.length > 0 ? (
+                      <TimingBreakdown timings={row.questionTimings} totalDurationMs={row.totalDurationMs} compact />
+                    ) : (
+                      <div className="empty-note" style={{ padding:"10px 0" }}>No timing data</div>
+                    )}
+                    {row.lastAnsweredAt && (
+                      <div className="lb-timestamp">
+                        Last answered: <strong>{fmtTimestamp(row.lastAnsweredAt)}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="result-cta-group">
@@ -661,8 +923,8 @@ function RegisterScreen({ name, setName, loading, error, onStart }) {
             <span className="qp-badge">🎯 LIVE MODE</span>
             <span className="qp-meta-right">Questions pushed by admin</span>
           </div>
-          <div className="qp-title">Speed-based scoring!</div>
-          <div className="qp-footer">⚡ Answer faster = more bonus points. Don't overthink it.</div>
+          <div className="qp-title">Speed-based scoring + time tie-breaker!</div>
+          <div className="qp-footer">⚡ Faster = more bonus pts. If you tie on score, <strong>cumulative response time</strong> decides your rank.</div>
         </div>
 
         {error && <div className="error-pill">😬 {error}</div>}
@@ -689,7 +951,7 @@ function RegisterScreen({ name, setName, loading, error, onStart }) {
   );
 }
 
-// ── Question Screen (live, one question at a time) ────────────────────────
+// ── Question Screen ────────────────────────────────────────────────────────
 const Q_ENCOURAGEMENTS = [
   "You got this! (maybe)",
   "Think hard. Or don't. We'll see.",
@@ -698,8 +960,8 @@ const Q_ENCOURAGEMENTS = [
 ];
 
 function QuestionScreen({ question, index, total, myScore, streak, timerSec, answered, onAnswer }) {
-  const [textVal,  setTextVal]  = useState("");
-  const [locked,   setLocked]   = useState(false);
+  const [textVal, setTextVal] = useState("");
+  const [locked,  setLocked]  = useState(false);
   const options = question.options || [];
   const enc     = useMemo(() => randomFrom(Q_ENCOURAGEMENTS), [question._id]);
 
@@ -713,7 +975,6 @@ function QuestionScreen({ question, index, total, myScore, streak, timerSec, ans
 
   return (
     <div className="screen question-screen">
-      {/* HUD */}
       <div className="hud">
         <div className="hud-left">
           <ProgressRing value={index} max={total} />
@@ -727,11 +988,10 @@ function QuestionScreen({ question, index, total, myScore, streak, timerSec, ans
           <StreakBadge streak={streak} />
         </div>
         <div className="hud-right">
-          <Timer seconds={timerSec} total={question.marks ? 20 : 20} />
+          <Timer seconds={timerSec} total={20} />
         </div>
       </div>
 
-      {/* Card */}
       <div className="question-card-wrap">
         <div className="question-card">
           <div className="q-header">
@@ -850,9 +1110,9 @@ function AdminDashboard({ onLogout }) {
       </div>
       {error && <div className="error-pill">😬 {error}</div>}
       <div className="admin-tabs">
-        {["live","dashboard","questions","quizzes"].map((t) => (
+        {["live","dashboard","questions","quizzes","openq"].map((t) => (
           <button key={t} className={tab===t ? "admin-tab active" : "admin-tab"} onClick={() => setTab(t)}>
-            {{ live:"🎙 Live Mode", dashboard:"📊 Dashboard", questions:"📝 Questions", quizzes:"🎮 Quizzes" }[t]}
+            {{ live:"🎙 Live Mode", dashboard:"📊 Dashboard", questions:"📝 Questions", quizzes:"🎮 Quizzes", openq:"💬 Open Q" }[t]}
           </button>
         ))}
       </div>
@@ -860,30 +1120,188 @@ function AdminDashboard({ onLogout }) {
       {tab === "dashboard" && <AdminDash stats={stats} results={results} leaderboard={leaderboard} />}
       {tab === "questions" && <QuestionManager questions={questions} onChanged={load} />}
       {tab === "quizzes"   && <QuizManager questions={questions} quizzes={quizzes} onChanged={load} />}
+      {tab === "openq" && <OpenQuestionAdmin />}
+    </div>
+  );
+}
+
+function OpenQuestionAdmin() {
+  const [questionText, setQuestionText] = React.useState("");
+  const [activeQ,      setActiveQ]      = React.useState(null);
+  const [responses,    setResponses]    = React.useState([]);
+  const [loading,      setLoading]      = React.useState(false);
+  const [saving,       setSaving]       = React.useState(false);
+  const [deleting,     setDeleting]     = React.useState(false);
+  const [error,        setError]        = React.useState("");
+  const [searchTerm,   setSearchTerm]   = React.useState("");
+  const [copied,       setCopied]       = React.useState(null);
+ 
+  const load = React.useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const data = await api.adminGetOpenResponses();
+      setActiveQ(data.question || null);
+      setResponses(data.responses || []);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, []);
+ 
+  React.useEffect(() => { load(); }, [load]);
+ 
+  const handleSet = async () => {
+    if (!questionText.trim()) return;
+    setSaving(true); setError("");
+    try {
+      await api.adminSetOpenQuestion(questionText.trim());
+      setQuestionText("");
+      await load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+ 
+  const handleDelete = async () => {
+    if (!window.confirm("Delete the open question and ALL responses? This cannot be undone.")) return;
+    setDeleting(true); setError("");
+    try {
+      await api.adminDeleteOpenQuestion();
+      setActiveQ(null); setResponses([]);
+    } catch (e) { setError(e.message); }
+    finally { setDeleting(false); }
+  };
+ 
+  const copyAll = () => {
+    const text = responses
+      .map((r, i) => `${i + 1}. ${r.user?.name || "???"}: ${r.answer}`)
+      .join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied("all");
+    setTimeout(() => setCopied(null), 1800);
+  };
+ 
+  const filtered = searchTerm
+    ? responses.filter(r =>
+        r.user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.answer?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : responses;
+ 
+  return (
+    <div className="oq-admin-root">
+      {error && <div className="error-pill" style={{ marginBottom: 12 }}>😬 {error}</div>}
+ 
+      {/* ── Set / replace question ── */}
+      <div className="admin-panel oq-set-panel">
+        <h3>💬 Open Question</h3>
+        <p className="oq-hint">
+          This is a <strong>standalone</strong> free-text question shown to every candidate
+          as soon as they join — independent of the live quiz. Only one can be active at a time.
+          Setting a new one replaces the old one and clears all previous responses.
+        </p>
+ 
+        {activeQ && (
+          <div className="oq-active-card">
+            <div className="oq-active-label">📌 Currently active</div>
+            <div className="oq-active-text">"{activeQ.question}"</div>
+            <div className="oq-active-meta">
+              Created {new Date(activeQ.createdAt).toLocaleString()} ·{" "}
+              <strong>{responses.length}</strong> response{responses.length !== 1 ? "s" : ""}
+            </div>
+            <button className="ghost-btn" style={{ marginTop: 8, color: "#c0392b", borderColor: "rgba(230,57,70,0.3)" }}
+              onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "🗑 Delete question + all responses"}
+            </button>
+          </div>
+        )}
+ 
+        <div className="oq-form">
+          <textarea
+            className="glass-textarea"
+            value={questionText}
+            onChange={(e) => setQuestionText(e.target.value)}
+            placeholder={activeQ
+              ? "Type a new question to replace the current one…"
+              : "Type your open-ended question here…"}
+            rows={3}
+          />
+          <button className="cta-button" style={{ width: "auto", padding: "12px 28px" }}
+            onClick={handleSet} disabled={saving || !questionText.trim()}>
+            {saving ? <Spinner /> : activeQ ? "🔄 Replace Question" : "🚀 Set Question"}
+          </button>
+        </div>
+      </div>
+ 
+      {/* ── Responses ── */}
+      <div className="admin-panel oq-responses-panel">
+        <div className="oq-responses-header">
+          <h3>📋 Responses ({responses.length})</h3>
+          <div style={{ display: "flex", gap: 8, flex: 1, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <input
+              className="glass-input"
+              style={{ maxWidth: 200, padding: "7px 12px" }}
+              placeholder="🔍 Search…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <button className="ghost-btn" onClick={load} disabled={loading}>
+              {loading ? <Spinner /> : "↻ Refresh"}
+            </button>
+            {responses.length > 0 && (
+              <button className="ghost-btn" onClick={copyAll}>
+                {copied === "all" ? "✅ Copied!" : "📋 Copy all"}
+              </button>
+            )}
+          </div>
+        </div>
+ 
+        {!activeQ && !loading && (
+          <div className="empty-note">No active question. Set one above ☝️</div>
+        )}
+ 
+        {activeQ && filtered.length === 0 && !loading && (
+          <div className="empty-note">
+            {searchTerm ? "No responses match your search." : "No responses yet. Waiting for candidates… 👀"}
+          </div>
+        )}
+ 
+        <div className="oq-response-list">
+          {filtered.map((r, i) => (
+            <div key={r._id} className="oq-response-row">
+              <div className="oq-resp-meta">
+                <span className="oq-resp-num">#{i + 1}</span>
+                <span className="oq-resp-name">{r.user?.name || "Unknown"}</span>
+                <span className="oq-resp-time">
+                  {new Date(r.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </span>
+              </div>
+              <div className="oq-resp-answer">{r.answer}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Admin Live Mode ────────────────────────────────────────────────────────
 function AdminLiveMode({ quizzes }) {
-  const [selectedQuizId, setSelectedQuizId]     = useState("");
-  const [sessionActive,  setSessionActive]      = useState(false);
-  const [phase,          setPhase]              = useState("idle"); // idle|lobby|question|leaderboard|finished
-  const [currentIndex,   setCurrentIndex]       = useState(-1);
-  const [totalQuestions, setTotalQuestions]     = useState(0);
-  const [currentQuestion, setCurrentQuestion]   = useState(null);
-  const [leaderboard,    setLeaderboard]        = useState([]);
-  const [answeredCount,  setAnsweredCount]      = useState(0);
-  const [totalPlayers,   setTotalPlayers]       = useState(0);
-  const [timerSec,       setTimerSec]           = useState(20);
-  const [busy,           setBusy]               = useState(false);
-  const [error,          setError]              = useState("");
+  const [selectedQuizId, setSelectedQuizId]  = useState("");
+  const [sessionActive,  setSessionActive]   = useState(false);
+  const [phase,          setPhase]           = useState("idle");
+  const [currentIndex,   setCurrentIndex]    = useState(-1);
+  const [totalQuestions, setTotalQuestions]  = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [leaderboard,    setLeaderboard]     = useState([]);
+  const [answeredCount,  setAnsweredCount]   = useState(0);
+  const [totalPlayers,   setTotalPlayers]    = useState(0);
+  const [timerSec,       setTimerSec]        = useState(20);
+  const [busy,           setBusy]            = useState(false);
+  const [error,          setError]           = useState("");
+  const [expandedRow,    setExpandedRow]     = useState(null);
   const timerRef = useRef(null);
   const sseRef   = useRef(null);
 
   const activeQuizzes = quizzes.filter(q => q.isActive);
 
-  // ── Connect to SSE so admin sees real-time answer counts ─────────────
   useEffect(() => {
     const es = new EventSource(`${API_BASE_URL}/live/stream`);
     sseRef.current = es;
@@ -898,6 +1316,12 @@ function AdminLiveMode({ quizzes }) {
       setLeaderboard(d.leaderboard || []);
       setPhase("leaderboard");
       clearInterval(timerRef.current);
+    });
+    es.addEventListener("leaderboard_update", (e) => {
+      const d = JSON.parse(e.data);
+      setLeaderboard(d.leaderboard || []);
+      setAnsweredCount(d.answeredCount || 0);
+      setTotalPlayers(d.total || 0);
     });
     es.addEventListener("session_finished", (e) => {
       const d = JSON.parse(e.data);
@@ -920,7 +1344,6 @@ function AdminLiveMode({ quizzes }) {
         setSessionActive(d.phase !== "idle" && d.phase !== "finished");
       }
     });
-
     return () => { es.close(); clearInterval(timerRef.current); };
   }, []);
 
@@ -962,8 +1385,6 @@ function AdminLiveMode({ quizzes }) {
         setCurrentIndex(res.questionIndex);
         setPhase("question");
         startAdminTimer(20);
-
-        // Fetch current state to get question details
         const state = await api.liveState();
         if (state.question) setCurrentQuestion(state.question);
       }
@@ -984,16 +1405,57 @@ function AdminLiveMode({ quizzes }) {
 
   const medals = ["🥇","🥈","🥉"];
 
+  const AdminLeaderboardRows = ({ rows }) => (
+    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+      {rows.slice(0,8).map((row, i) => {
+        const isExpanded = expandedRow === row.userId;
+        const prevScore = i > 0 ? rows[i-1]?.totalScore : null;
+        const isTied = prevScore !== null && prevScore === row.totalScore;
+        return (
+          <div key={row.userId}>
+            <div className="lb-row lb-row-rich" style={{ cursor:"pointer" }}
+              onClick={() => setExpandedRow(isExpanded ? null : row.userId)}>
+              <span className="lb-rank">{medals[i] || `${i+1}`}</span>
+              <div className="lb-info">
+                <div className="lb-name-row">
+                  <strong>{row.name}</strong>
+                  {isTied && <span className="lb-tie-indicator">🔗 tied→time</span>}
+                </div>
+                <div className="lb-meta-row">
+                  <span className="lb-score">⭐ {row.totalScore}</span>
+                  <span className="lb-dur">⏱ {fmtMsShort(row.totalDurationMs)}</span>
+                  {row.lastAnsweredAt && <span className="lb-ts">🕐 {fmtTimestamp(row.lastAnsweredAt)}</span>}
+                </div>
+              </div>
+              <span className="lb-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+            </div>
+            {isExpanded && (
+              <div className="lb-timings-expanded">
+                {row.questionTimings?.length > 0 ? (
+                  <TimingBreakdown timings={row.questionTimings} totalDurationMs={row.totalDurationMs} compact />
+                ) : (
+                  <div className="empty-note" style={{ padding:"8px 0", fontSize:"0.8rem" }}>No timings yet</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="admin-live-mode">
       {error && <div className="error-pill" style={{ marginBottom:12 }}>😬 {error}</div>}
 
-      {/* ── Session not started ── */}
+      {/* Tie-break note */}
+      <div className="tiebreak-note" style={{ marginBottom:8 }}>
+        <span>🔗</span> Tie-break order: <strong>score</strong> → <strong>total cumulative time</strong> → last answer speed → earliest timestamp
+      </div>
+
       {!sessionActive && phase !== "finished" && (
         <div className="live-setup-card">
-          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.4rem", marginBottom:8 }}>
-            🎙 Start a Live Session
-          </div>
+          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.4rem", marginBottom:8 }}>🎙 Start a Live Session</div>
           <p style={{ color:"var(--text-3)", fontSize:"0.88rem", fontWeight:700, marginBottom:16 }}>
             Pick an active quiz. Questions are pushed one at a time — you control the pace.
           </p>
@@ -1006,13 +1468,10 @@ function AdminLiveMode({ quizzes }) {
           ) : (
             <>
               <select className="glass-input" value={selectedQuizId}
-                onChange={(e) => setSelectedQuizId(e.target.value)}
-                style={{ marginBottom:12 }}>
+                onChange={(e) => setSelectedQuizId(e.target.value)} style={{ marginBottom:12 }}>
                 <option value="">— select a quiz —</option>
                 {activeQuizzes.map(q => (
-                  <option key={q._id} value={q._id}>
-                    {q.title} ({q.questions?.length||0} questions)
-                  </option>
+                  <option key={q._id} value={q._id}>{q.title} ({q.questions?.length||0} questions)</option>
                 ))}
               </select>
               <button className="cta-button" onClick={handleStartSession}
@@ -1024,16 +1483,13 @@ function AdminLiveMode({ quizzes }) {
         </div>
       )}
 
-      {/* ── Lobby / waiting for first push ── */}
       {sessionActive && phase === "lobby" && (
         <div className="live-control-card">
           <div className="live-phase-badge lobby">🟡 LOBBY — waiting for players</div>
           <p style={{ color:"var(--text-2)", fontWeight:700, margin:"10px 0 20px" }}>
             Players are joining. Hit the button when ready to push Question 1.
           </p>
-          <div className="live-player-count">
-            👥 {totalPlayers} player{totalPlayers !== 1 ? "s" : ""} in the lobby
-          </div>
+          <div className="live-player-count">👥 {totalPlayers} player{totalPlayers !== 1 ? "s" : ""} in the lobby</div>
           <button className="cta-button" onClick={handleNextQuestion} disabled={busy}
             style={{ marginTop:16, width:"auto", padding:"13px 36px" }}>
             {busy ? <Spinner /> : "▶ Push Question 1"}
@@ -1041,13 +1497,10 @@ function AdminLiveMode({ quizzes }) {
         </div>
       )}
 
-      {/* ── Question live ── */}
       {sessionActive && phase === "question" && (
         <div className="admin-grid-2" style={{ gap:16 }}>
-          {/* Left: current question card */}
           <div className="live-control-card">
             <div className="live-phase-badge question">🔴 LIVE — Question {currentIndex+1}/{totalQuestions}</div>
-
             {currentQuestion && (
               <div className="admin-q-preview">
                 <div className="q-header" style={{ marginBottom:8 }}>
@@ -1065,39 +1518,23 @@ function AdminLiveMode({ quizzes }) {
                 ))}
               </div>
             )}
-
             <div className="live-timer-row">
               <Timer seconds={timerSec} total={20} />
-              <div className="live-answer-pill">
-                ✅ {answeredCount} / {totalPlayers} answered
-              </div>
+              <div className="live-answer-pill">✅ {answeredCount} / {totalPlayers} answered</div>
             </div>
-
             <div style={{ display:"flex", gap:10, marginTop:14 }}>
-              <button className="ghost-btn" onClick={handleEndQuestion} disabled={busy}>
-                ⏭ End Question Now
-              </button>
+              <button className="ghost-btn" onClick={handleEndQuestion} disabled={busy}>⏭ End Question Now</button>
             </div>
           </div>
-
-          {/* Right: live mini leaderboard */}
           <div className="admin-panel">
             <h3>📊 Live Standings</h3>
             {leaderboard.length === 0 ? (
               <div className="empty-note">Waiting for answers… 🕐</div>
-            ) : (
-              leaderboard.slice(0,8).map((row, i) => (
-                <div key={row.userId} className="lb-row">
-                  <span className="lb-rank">{medals[i] || `${i+1}`}</span>
-                  <div><strong>{row.name}</strong><small>{row.totalScore} pts</small></div>
-                </div>
-              ))
-            )}
+            ) : <AdminLeaderboardRows rows={leaderboard} />}
           </div>
         </div>
       )}
 
-      {/* ── Leaderboard between questions ── */}
       {sessionActive && phase === "leaderboard" && (
         <div className="admin-grid-2" style={{ gap:16 }}>
           <div className="live-control-card">
@@ -1105,7 +1542,6 @@ function AdminLiveMode({ quizzes }) {
             <p style={{ color:"var(--text-2)", fontWeight:700, margin:"10px 0 16px" }}>
               Candidates can see the leaderboard now. Ready to push the next question?
             </p>
-
             {currentIndex + 1 < totalQuestions ? (
               <button className="cta-button" onClick={handleNextQuestion} disabled={busy}
                 style={{ width:"auto", padding:"13px 36px" }}>
@@ -1118,26 +1554,19 @@ function AdminLiveMode({ quizzes }) {
               </button>
             )}
           </div>
-
           <div className="admin-panel">
             <h3>🏆 Current Leaderboard</h3>
-            {leaderboard.slice(0,8).map((row, i) => (
-              <div key={row.userId} className="lb-row">
-                <span className="lb-rank">{medals[i] || `${i+1}`}</span>
-                <div><strong>{row.name}</strong><small>{row.totalScore} pts</small></div>
-              </div>
-            ))}
+            <AdminLeaderboardRows rows={leaderboard} />
           </div>
         </div>
       )}
 
-      {/* ── Finished ── */}
       {phase === "finished" && (
         <div className="admin-grid-2" style={{ gap:16 }}>
           <div className="live-control-card">
             <div className="live-phase-badge finished">🏁 SESSION FINISHED</div>
             <p style={{ color:"var(--text-2)", fontWeight:700, margin:"10px 0 16px" }}>
-              All questions done! Final standings below. Start a new session anytime.
+              All questions done! Final standings below.
             </p>
             <button className="ghost-btn" onClick={() => { setPhase("idle"); setSessionActive(false); setSelectedQuizId(""); }}>
               🔄 New Session
@@ -1145,12 +1574,7 @@ function AdminLiveMode({ quizzes }) {
           </div>
           <div className="admin-panel">
             <h3>🏆 Final Leaderboard</h3>
-            {leaderboard.slice(0,10).map((row, i) => (
-              <div key={row.userId} className="lb-row">
-                <span className="lb-rank">{medals[i] || `${i+1}`}</span>
-                <div><strong>{row.name}</strong><small>{row.totalScore} pts</small></div>
-              </div>
-            ))}
+            <AdminLeaderboardRows rows={leaderboard} />
           </div>
         </div>
       )}
@@ -1158,7 +1582,7 @@ function AdminLiveMode({ quizzes }) {
   );
 }
 
-// ── Admin Dashboard, QuestionManager, QuizManager (unchanged) ─────────────
+// ── Admin Dashboard ────────────────────────────────────────────────────────
 function AdminDash({ stats, results, leaderboard }) {
   return (
     <div className="admin-dash">
@@ -1279,12 +1703,12 @@ function QuestionManager({ questions, onChanged }) {
 }
 
 function QuizManager({ questions, quizzes, onChanged }) {
-  const [title, setTitle]   = useState("");
-  const [desc,  setDesc]    = useState("");
-  const [dur,   setDur]     = useState(10);
-  const [sel,   setSel]     = useState([]);
-  const [busy,  setBusy]    = useState(false);
-  const [err,   setErr]     = useState("");
+  const [title, setTitle]  = useState("");
+  const [desc,  setDesc]   = useState("");
+  const [dur,   setDur]    = useState(10);
+  const [sel,   setSel]    = useState([]);
+  const [busy,  setBusy]   = useState(false);
+  const [err,   setErr]    = useState("");
   const toggle = (id) => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
   const create = async () => {
     setBusy(true); setErr("");
@@ -1333,14 +1757,5 @@ function QuizManager({ questions, quizzes, onChanged }) {
 }
 
 function Spinner() { return <span className="spinner">⟳</span>; }
-function FullscreenLoader() {
-  const quip = useMemo(() => randomFrom(LOADING_QUIPS), []);
-  return (
-    <div className="fullscreen-loader">
-      <div className="loader-ring" />
-      <span>{quip}</span>
-    </div>
-  );
-}
 
 createRoot(document.getElementById("root")).render(<App />);
